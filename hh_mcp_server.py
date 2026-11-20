@@ -514,7 +514,7 @@ def build_app():
     from starlette.responses import Response
     from starlette.types import ASGIApp, Receive, Scope, Send
 
-    class BearerCheckMiddleware:
+        class BearerCheckMiddleware:
         def __init__(self, app: ASGIApp, token: str) -> None:
             self.app = app
             self.token = token
@@ -522,12 +522,13 @@ def build_app():
         async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
             if scope["type"] == "http" and scope.get("path", "").startswith(PATH):
                 headers = {k: v for k, v in scope.get("headers", [])}
-                auth = headers.get(b"authorization", b"").decode("latin-1")
-                if auth != f"Bearer {self.token}":
+                auth = headers.get(b"x-mcp-token", b"").decode("latin-1")
+                if auth != self.token:
                     resp = Response("Unauthorized", status_code=401)
                     await resp(scope, receive, send)
                     return
             await self.app(scope, receive, send)
+
 
     return mcp.http_app(path=PATH, middleware=[Middleware(BearerCheckMiddleware, token=MCP_AUTH_TOKEN)])
 
