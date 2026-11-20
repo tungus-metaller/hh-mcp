@@ -48,7 +48,8 @@ BASE_URL = "https://api.hh.ru"
 
 HOST = os.environ.get("HH_MCP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8080"))
-PATH = "/mcp"
+PATH = "/sse"
+MESSAGE_PATH = "/messages/"
 
 # Токен для защиты самого MCP-сервера (Bearer от клиентов, например AI Studio)
 MCP_AUTH_TOKEN = os.environ.get("HH_MCP_AUTH_TOKEN", "")
@@ -507,29 +508,38 @@ async def hh_api_get(path: str, query: str = "") -> str:
 # ----------------------------------------------------------------------------
 
 def build_app():
-    """Собирает ASGI-приложение; при заданном MCP_AUTH_TOKEN добавляет проверку Bearer."""
+    """ASGI-приложение на SSE-транспорте; при заданном MCP_AUTH_TOKEN — проверка токена."""
     if not MCP_AUTH_TOKEN:
-        return mcp.http_app(path=PATH)
+        return mcp.http_app(transport="sse", path=PATH, message_path=MESSAGE_PATH)
+
     from starlette.middleware import Middleware
     from starlette.responses import Response
     from starlette.types import ASGIApp, Receive, Scope, Send
 
-    class BearerCheckMiddleware:
+    class TokenCheckMiddleware:
         def __init__(self, app: ASGIApp, token: str) -> None:
             self.app = app
             self.token = token
 
         async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-            if scope["type"] == "http" and scope.get("path", "").startswith(PATH):
-                headers = {k: v for k, v in scope.get("headers", [])}
-                auth = headers.get(b"authorization", b"").decode("latin-1")
-                if auth != f"Bearer {self.token}":
-                    resp = Response("Unauthorized", status_code=401)
-                    await resp(scope, receive, send)
-                    return
+            if scope["type"] == "http":
+                path = scope.get("path", "")
+                if path.startswith(PATH) or path.startswith(MESSAGE_PATH):
+                    headers = {k: v for k, v in scope.get("headers", [])}
+                    tok = headers.get(b"x-mcp-token", b"").decode("latin-1")
+                    if tok != self.token:
+                        resp = Response("Unauthorized", status_code=401)
+                        await resp(scope, receive, send)
+                        return
             await self.app(scope, receive, send)
 
-    return mcp.http_app(path=PATH, middleware=[Middleware(BearerCheckMiddleware, token=MCP_AUTH_TOKEN)])
+    return mcp.http_app(
+        transport="sse",
+        path=PATH,
+        message_path=MESSAGE_PATH,
+        middleware=[Middleware(TokenCheckMiddleware, token=MCP_AUTH_TOKEN)],
+    )
+
 
 
 if __name__ == "__main__":
