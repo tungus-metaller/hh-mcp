@@ -47,7 +47,7 @@ from fastmcp import FastMCP
 BASE_URL = "https://api.hh.ru"
 
 HOST = os.environ.get("HH_MCP_HOST", "0.0.0.0")
-PORT = int(os.environ.get("PORT", "8000"))
+PORT = int(os.environ.get("PORT", "8080"))
 PATH = "/mcp"
 
 # Токен для защиты самого MCP-сервера (Bearer от клиентов, например AI Studio)
